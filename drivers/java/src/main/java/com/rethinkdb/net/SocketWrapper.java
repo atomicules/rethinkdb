@@ -3,7 +3,10 @@ package com.rethinkdb.net;
 import com.rethinkdb.gen.exc.ReqlDriverError;
 
 import javax.net.SocketFactory;
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SNIServerName;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import java.io.DataInputStream;
@@ -14,7 +17,9 @@ import java.net.Socket;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Optional;
+import java.util.List;
 
 public class SocketWrapper {
     // networking stuff
@@ -56,12 +61,22 @@ public class SocketWrapper {
 
             // should we secure the connection?
             if (sslContext.isPresent()) {
+                // System.out.println("sslContext");
                 socketFactory = sslContext.get().getSocketFactory();
                 SSLSocketFactory sslSf = (SSLSocketFactory) socketFactory;
                 sslSocket = (SSLSocket) sslSf.createSocket(socket,
                         socket.getInetAddress().getHostAddress(),
                         socket.getPort(),
                         true);
+
+                // SNI support, Java 8 only
+                SNIHostName serverName = new SNIHostName(hostname);
+                List<SNIServerName> serverNames = new ArrayList<>(1);
+                serverNames.add(serverName);
+
+                SSLParameters params = sslSocket.getSSLParameters();
+                params.setServerNames(serverNames);
+                sslSocket.setSSLParameters(params);
 
                 // replace input/output streams
                 readStream = new DataInputStream(sslSocket.getInputStream());
@@ -88,6 +103,7 @@ public class SocketWrapper {
                 toWrite = handshake.nextMessage(serverMsg);
             }
         } catch (IOException e) {
+            // System.out.println(e);
             throw new ReqlDriverError("Connection timed out.", e);
         }
     }
